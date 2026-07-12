@@ -239,7 +239,7 @@
 <body class="theme-dark">
 <div id="app">
   <header id="toolbar">
-    <div class="brand">◆ DIAMOND MODEL <span>Adversary Activity Tracker</span></div>
+    <div class="brand">◆ DIAMOND MODEL <span>Kicking MCAs in the TTPs</span></div>
     <div class="tools">
       <button id="btnNew" title="Add a new event diamond">+ New Event</button>
       <button id="btnAspectLock" class="active" title="Keep each diamond's width:height ratio fixed while resizing">🔒 Lock Ratio</button>
@@ -369,27 +369,17 @@
   }
 
   function seedExample(){
-    const e1 = makeDiamond(0, -190, {
-      name:'Initial Compromise', adversary:['APT-COBALT-9'], capability:['Spearphishing w/ macro dropper'],
-      infrastructure:['185.220.101.7 (VPS)'], victim:['Org A — Finance Dept'],
+    const e1 = makeDiamond(0, 0, {
+      name:'Phishing Email Delivered',
+      adversary:['FIN-BRASS-7'],
+      capability:['Credential-harvesting phishing page', 'Spoofed DocuSign email template'],
+      infrastructure:['docusign-secure-verify[.]com', '104.21.62.19 (hosting)'],
+      victim:['Org A — Accounts Payable clerk'],
       phase:'Delivery', direction:'Adversary → Victim', result:'Success', confidence:'Medium',
-      timestamp:'2026-06-02 09:14 UTC', notes:'Malicious invoice attachment opened by AP clerk.'
+      timestamp:'2026-06-02 09:14',
+      notes:'Clerk clicked the link from a personal inbox on a work laptop; credentials submitted before IT was alerted.'
     });
-    const e2 = makeDiamond(0, 190, {
-      name:'C2 Established', adversary:['APT-COBALT-9'], capability:['Custom loader','Cobalt Strike beacon'],
-      infrastructure:['update-cdn-sync[.]net','45.61.53.22 (fallback C2)'], victim:['Org A — Finance Dept workstation'],
-      phase:'Command & Control', direction:'Bidirectional', result:'Success', confidence:'High',
-      timestamp:'2026-06-02 09:26 UTC', notes:'Beacon check-in interval ~60s, jitter 20%.'
-    });
-    state.diamonds.push(e1, e2);
-    state.edges.push({
-      id: genId(),
-      from: { id: e1.id, corner: 'infrastructure' },
-      to: { id: e2.id, corner: 'infrastructure' },
-      label:'shared infrastructure',
-      style:'angled',
-      arrow:'arrow'
-    });
+    state.diamonds.push(e1);
   }
   seedExample();
 
@@ -553,7 +543,7 @@
     const showCount = isExpanded ? items.length : Math.min(items.length, maxShown);
 
     items.slice(0, showCount).forEach((v, i) => {
-      svgEl('text', { x:x, y:y+13+i*13, 'text-anchor':anchor, class:'corner-value ' + cls }, g).textContent = truncate(v, 30);
+      svgEl('text', { x:x, y:y+13+i*13, 'text-anchor':anchor, class:'corner-value ' + cls }, g).textContent = truncate(v, 100);
     });
 
     if(items.length > maxShown){
@@ -931,7 +921,7 @@
       </div>
       <div class="field-row">
         ${field('Confidence', `<select id="f_confidence">${selectOptions(CONFIDENCE, d.confidence)}</select>`)}
-        ${field('Timestamp', `<input id="f_timestamp" type="text" placeholder="YYYY-MM-DD HH:MM" value="${escapeAttr(d.timestamp)}">`)}
+        ${field('Timestamp', `<input id="f_timestamp" type="text" pattern="[0-9\\-: ]*" maxlength="16" placeholder="YYYY-MM-DD HH:MM" value="${escapeAttr(d.timestamp)}">`)}
       </div>
       ${field('Notes', `<textarea id="f_notes">${escapeHtml(d.notes)}</textarea>`)}
       <div class="field-row">
@@ -949,7 +939,13 @@
       const evt = (el.tagName === 'SELECT') ? 'change' : 'input';
       el.addEventListener(evt, () => {
         commitFieldChange();
-        d[key] = el.value;
+        if(key === 'timestamp'){
+          const cleaned = el.value.replace(/[^0-9\-: ]/g, '');
+          if(el.value !== cleaned) el.value = cleaned;
+          d[key] = cleaned;
+        } else {
+          d[key] = el.value;
+        }
         render();
       });
     });

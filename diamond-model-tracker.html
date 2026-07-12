@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diamond Model — Activity Thread Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --font-ui: 'Inter', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+  }
+  body.theme-dark{
+    --bg:#0d1117;
+    --bg-dot: rgba(255,255,255,0.06);
+    --panel-bg:#151b23;
+    --panel-bg-2:#1c232c;
+    --text:#e6edf3;
+    --text-dim:#8b949e;
+    --border:#2a313b;
+    --border-strong:#3d4552;
+    --accent-adversary:#f0883e;
+    --accent-capability:#f85149;
+    --accent-infrastructure:#58a6ff;
+    --accent-victim:#3fb950;
+    --accent-edge:#56d4dd;
+    --node-fill:#161b22;
+    --node-stroke:#4b5563;
+    --danger:#f85149;
+    --btn-bg:#1c232c;
+    --btn-bg-hover:#262e38;
+    --shadow: 0 8px 24px rgba(0,0,0,0.45);
+  }
+  body.theme-light{
+    --bg:#f4f6f8;
+    --bg-dot: rgba(15,23,32,0.10);
+    --panel-bg:#ffffff;
+    --panel-bg-2:#f0f2f5;
+    --text:#1b1f24;
+    --text-dim:#57606a;
+    --border:#d7dce1;
+    --border-strong:#b9c0c8;
+    --accent-adversary:#b3540c;
+    --accent-capability:#cf222e;
+    --accent-infrastructure:#0969da;
+    --accent-victim:#1a7f37;
+    --accent-edge:#0b7d8c;
+    --node-fill:#ffffff;
+    --node-stroke:#6e7781;
+    --danger:#cf222e;
+    --btn-bg:#ffffff;
+    --btn-bg-hover:#eaedf0;
+    --shadow: 0 8px 24px rgba(20,25,30,0.12);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:var(--font-ui);
+    background:var(--bg);
+    color:var(--text);
+    overflow:hidden;
+  }
+  #app{display:flex;flex-direction:column;height:100vh;}
+
+  /* Toolbar */
+  #toolbar{
+    display:flex;align-items:center;justify-content:space-between;
+    gap:12px;padding:10px 16px;
+    background:var(--panel-bg);
+    border-bottom:1px solid var(--border);
+    flex-wrap:wrap;
+    z-index:20;
+  }
+  .brand{
+    font-family:var(--font-mono);
+    font-weight:600;font-size:14px;letter-spacing:0.5px;
+    display:flex;align-items:baseline;gap:8px;white-space:nowrap;
+  }
+  .brand span{font-family:var(--font-ui);font-weight:400;color:var(--text-dim);font-size:12px;}
+  .tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .divider{width:1px;height:20px;background:var(--border-strong);margin:0 4px;}
+  button{
+    font-family:var(--font-ui);
+    font-size:13px;font-weight:500;
+    background:var(--btn-bg);
+    color:var(--text);
+    border:1px solid var(--border-strong);
+    border-radius:6px;
+    padding:6px 10px;
+    cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;
+    transition:background 0.12s ease, border-color 0.12s ease;
+  }
+  button:hover{background:var(--btn-bg-hover);}
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible{
+    outline:2px solid var(--accent-infrastructure); outline-offset:1px;
+  }
+  button.active{
+    background:var(--accent-infrastructure);
+    color:#04101d;
+    border-color:var(--accent-infrastructure);
+  }
+  button.danger{color:var(--danger);border-color:var(--danger);}
+  button.danger:hover{background:var(--danger);color:#fff;}
+  #zoomLabel{font-family:var(--font-mono);font-size:12px;color:var(--text-dim);min-width:38px;text-align:center;}
+  #toolbar select{
+    font-family:var(--font-ui);font-size:13px;font-weight:500;
+    background:var(--btn-bg);color:var(--text);
+    border:1px solid var(--border-strong);border-radius:6px;
+    padding:6px 8px;cursor:pointer;
+  }
+
+  /* Main layout */
+  #main{flex:1;display:flex;min-height:0;position:relative;}
+  #canvasWrap{flex:1;position:relative;overflow:hidden;background:var(--bg);}
+  #canvas{width:100%;height:100%;display:block;cursor:grab;}
+  #canvas.panning{cursor:grabbing;}
+  #canvas.connect-mode{cursor:crosshair;}
+
+  #hint{
+    position:absolute;left:16px;bottom:14px;
+    font-family:var(--font-mono);font-size:11px;color:var(--text-dim);
+    background:var(--panel-bg);border:1px solid var(--border);
+    padding:6px 10px;border-radius:6px;pointer-events:none;opacity:0.85;
+  }
+
+  /* Node styling */
+  .node{cursor:pointer;}
+  .node .shape{
+    fill:var(--node-fill);
+    stroke:var(--node-stroke);
+    stroke-width:2;
+    transition:stroke 0.1s ease;
+  }
+  .node.selected .shape{stroke:var(--accent-infrastructure);stroke-width:3;}
+  .node .badge-circle{fill:var(--panel-bg);stroke:var(--border-strong);stroke-width:1.5;}
+  .resize-handle{cursor:nwse-resize;}
+  .resize-handle circle{fill:var(--accent-infrastructure);stroke:var(--panel-bg);stroke-width:2;}
+  .resize-handle .resize-glyph{stroke:var(--panel-bg);stroke-width:1.3;fill:none;stroke-linecap:round;}
+  .resize-handle:hover circle{fill:var(--text);}
+  .node .badge-text{fill:var(--text-dim);font-family:var(--font-mono);font-size:10px;text-anchor:middle;dominant-baseline:middle;}
+  .node .center-name{fill:var(--text);font-family:var(--font-ui);font-weight:700;font-size:13px;text-anchor:middle;}
+  .node .center-sub{fill:var(--text-dim);font-family:var(--font-mono);font-size:9px;text-anchor:middle;}
+  .node .corner-label{font-family:var(--font-mono);font-size:9px;font-weight:600;letter-spacing:0.5px;}
+  .node .corner-value{font-family:var(--font-ui);font-size:11px;font-weight:600;}
+  .node .corner-more{font-weight:500;font-style:italic;opacity:0.75;}
+  .node .corner-toggle{cursor:pointer;font-weight:600;font-style:normal;text-decoration:underline dotted;opacity:0.85;}
+  .node .corner-toggle:hover{opacity:1;}
+  .node .corner-adversary{fill:var(--accent-adversary);}
+  .node .corner-capability{fill:var(--accent-capability);}
+  .node .corner-infrastructure{fill:var(--accent-infrastructure);}
+  .node .corner-victim{fill:var(--accent-victim);}
+
+  .corner-dot{cursor:pointer;stroke-width:2;stroke:var(--panel-bg);transition:r 0.08s ease;}
+  .corner-dot:hover{stroke-width:3;}
+  .corner-dot.picked{stroke:var(--text);stroke-width:3;stroke-dasharray:2 2;}
+  .corner-dot-adversary{fill:var(--accent-adversary);}
+  .corner-dot-capability{fill:var(--accent-capability);}
+  .corner-dot-infrastructure{fill:var(--accent-infrastructure);}
+  .corner-dot-victim{fill:var(--accent-victim);}
+
+  .edge-line{stroke:var(--accent-edge);stroke-width:2;fill:none;marker-end:url(#arrowhead);}
+  .edge-line.no-arrow{marker-end:none;}
+  .edge-line.selected{stroke-width:3.5;}
+  .edge-hit{stroke:transparent;stroke-width:16;fill:none;cursor:pointer;}
+  .edge-label-bg{fill:var(--panel-bg);stroke:var(--border);stroke-width:1;}
+  .edge-label-text{fill:var(--text-dim);font-family:var(--font-mono);font-size:10px;text-anchor:middle;dominant-baseline:middle;}
+  .arrowhead-path{fill:var(--accent-edge);}
+
+  /* Side panel */
+  #panel{
+    width:0;
+    overflow:hidden;
+    background:var(--panel-bg);
+    border-left:1px solid var(--border);
+    transition:width 0.16s ease;
+    flex-shrink:0;
+    position:relative;
+  }
+  #panel.resizing{transition:none;}
+  #panel.open{overflow-y:auto;overflow-x:hidden;}
+  #panelResizeHandle{
+    position:absolute;left:0;top:0;bottom:0;width:6px;
+    cursor:ew-resize;background:transparent;z-index:5;
+  }
+  #panelResizeHandle:hover,
+  #panel.resizing #panelResizeHandle{background:var(--accent-infrastructure);}
+  #panelContent{padding:16px;width:100%;box-sizing:border-box;}
+  .panel-title{font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:11px;font-weight:600;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.3px;}
+  .field input, .field select, .field textarea{
+    width:100%;padding:7px 8px;font-family:var(--font-ui);font-size:13px;
+    background:var(--panel-bg-2);color:var(--text);
+    border:1px solid var(--border-strong);border-radius:5px;
+  }
+  .field textarea{resize:vertical;min-height:50px;}
+  .field-row{display:flex;gap:8px;}
+  .field-row .field{flex:1;}
+  .swatch{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;}
+  .chip-list{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;min-height:22px;}
+  .chip{
+    display:inline-flex;align-items:center;gap:5px;
+    background:var(--panel-bg-2);border:1px solid var(--border-strong);border-radius:12px;
+    padding:3px 4px 3px 10px;font-size:12px;color:var(--text);max-width:100%;
+  }
+  .chip-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:230px;}
+  .chip-remove{
+    background:transparent;border:none;color:var(--text-dim);cursor:pointer;
+    font-size:11px;line-height:1;padding:3px 5px;border-radius:50%;
+  }
+  .chip-remove:hover{background:var(--danger);color:#fff;}
+  .chip-empty{font-size:12px;color:var(--text-dim);font-style:italic;}
+  .chip-add-row{display:flex;gap:6px;}
+  .chip-add-row input{flex:1;}
+  .chip-add-row button{padding:7px 10px;}
+  .panel-actions{display:flex;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);}
+  .panel-actions button{flex:1;justify-content:center;}
+
+  /* Legend */
+  #legendPanel{
+    position:absolute;top:12px;right:12px;width:280px;
+    background:var(--panel-bg);border:1px solid var(--border);border-radius:8px;
+    padding:14px;box-shadow:var(--shadow);font-size:12px;z-index:15;
+  }
+  #legendPanel.hidden{display:none;}
+  #legendPanel h3{margin:0 0 8px;font-size:12px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);}
+  #legendPanel .legend-row{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;line-height:1.4;}
+  #legendPanel .legend-row .swatch{margin-top:4px;flex-shrink:0;}
+  #legendPanel p{margin:8px 0 0;color:var(--text-dim);line-height:1.5;}
+  #legendPanel .close-legend{position:absolute;top:10px;right:10px;padding:2px 6px;font-size:12px;}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;}
+  }
+</style>
+</head>
+<body class="theme-dark">
+<div id="app">
+  <header id="toolbar">
+    <div class="brand">◆ DIAMOND MODEL <span>Adversary Activity Thread Tracker</span></div>
+    <div class="tools">
+      <button id="btnNew" title="Add a new event diamond">+ New Event</button>
+      <button id="btnAspectLock" class="active" title="Keep each diamond's width:height ratio fixed while resizing">🔒 Lock Ratio</button>
+      <button id="btnConnect" title="Draw a directed link between two events">⤢ Connect</button>
+      <select id="edgeStyleSelect" title="Line style for new links">
+        <option value="straight">Straight line</option>
+        <option value="angled">Angled (45°)</option>
+      </select>
+      <select id="edgeArrowSelect" title="Arrowhead for new links">
+        <option value="arrow">Arrow →</option>
+        <option value="none">Plain line —</option>
+      </select>
+      <div class="divider"></div>
+      <button id="btnUndo" title="Undo (Ctrl+Z)">↺ Undo</button>
+      <button id="btnRedo" title="Redo (Ctrl+Shift+Z)">↻ Redo</button>
+      <div class="divider"></div>
+      <button id="btnZoomOut" title="Zoom out">−</button>
+      <span id="zoomLabel">100%</span>
+      <button id="btnZoomIn" title="Zoom in">+</button>
+      <button id="btnZoomReset" title="Reset view">Reset</button>
+      <div class="divider"></div>
+      <select id="exportSelect" title="Export the case">
+        <option value="" selected disabled hidden>Export</option>
+        <option value="json">json</option>
+        <option value="png">png</option>
+      </select>
+      <button id="btnImport" title="Load case from JSON file">Import</button>
+      <input type="file" id="fileImport" accept="application/json" hidden>
+      <button id="btnClear" class="danger" title="Remove all events and links">Clear</button>
+      <div class="divider"></div>
+      <button id="btnLegend" title="Show Diamond Model legend">? Legend</button>
+      <button id="btnTheme" title="Toggle light/dark mode">☾ Dark</button>
+    </div>
+  </header>
+
+  <div id="main">
+    <div id="canvasWrap">
+      <svg id="canvas">
+        <defs>
+          <marker id="arrowhead" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path class="arrowhead-path" d="M0,0 L10,5 L0,10 z"></path>
+          </marker>
+        </defs>
+        <g id="viewport">
+          <rect id="bgRect" x="-6000" y="-6000" width="12000" height="12000" fill="transparent"></rect>
+          <g id="edgesLayer"></g>
+          <g id="nodesLayer"></g>
+          <g id="cornersLayer"></g>
+        </g>
+      </svg>
+      <div id="hint">Drag empty canvas to pan · Scroll to zoom · Drag a diamond to move it · Select a diamond and drag its corner handle to resize · In Connect mode, click a corner dot then another to link specific features</div>
+      <div id="legendPanel" class="hidden">
+        <button class="close-legend" id="btnCloseLegend">✕</button>
+        <h3>Diamond corners</h3>
+        <div class="legend-row"><span class="swatch" style="background:var(--accent-adversary)"></span><div><strong>Adversary</strong> — top vertex. Who is behind the activity.</div></div>
+        <div class="legend-row"><span class="swatch" style="background:var(--accent-capability)"></span><div><strong>Capability</strong> — left vertex. Tools, malware, TTPs used.</div></div>
+        <div class="legend-row"><span class="swatch" style="background:var(--accent-infrastructure)"></span><div><strong>Infrastructure</strong> — right vertex. IPs, domains, C2, delivery mechanisms.</div></div>
+        <div class="legend-row"><span class="swatch" style="background:var(--accent-victim)"></span><div><strong>Victim</strong> — bottom vertex. Target person, org, or asset.</div></div>
+        <p>Each diamond is one discrete event. Connect diamonds to build an <strong>activity-attack graph</strong> showing how the adversary pivoted across an intrusion.</p>
+        <p><strong>To link two events:</strong> click Connect, then click a colored corner dot on the first diamond (e.g. Infrastructure), then a corner dot on the second. The link is anchored to those exact features — click it again to label or delete.</p>
+      </div>
+    </div>
+    <aside id="panel"><div id="panelResizeHandle" title="Drag to resize"></div><div id="panelContent"></div></aside>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  const DEFAULT_HW = 150, DEFAULT_HH = 98; // default diamond size = 300x196 (this line controls it)
+  const MIN_HW = 65, MIN_HH = 42, MAX_HW = 340, MAX_HH = 230;
+  const PHASES = ["Reconnaissance","Weaponization","Delivery","Exploitation","Installation","Command & Control","Actions on Objectives","Unspecified"];
+  const DIRECTIONS = ["Victim → Adversary","Adversary → Victim","Bidirectional","Infrastructure → Infrastructure","Unknown"];
+  const RESULTS = ["Success","Failure","Unknown"];
+  const CONFIDENCE = ["Low","Medium","High","Confirmed"];
+
+  let idCounter = 1;
+  function genId(){ return 'd' + (idCounter++); }
+
+  let state = { diamonds: [], edges: [] };
+  let undoStack = [], redoStack = [];
+
+  let scale = 1, panX = 0, panY = 0;
+  let mode = 'select'; // 'select' | 'connect'
+  let pendingConnect = null; // { id, corner } — the corner picked as the start of a new link
+  let defaultEdgeStyle = 'straight'; // 'straight' | 'angled' — applied to newly created links
+  let defaultEdgeArrow = 'arrow'; // 'arrow' | 'none' — applied to newly created links
+  let selectedType = null, selectedId = null;
+  let preEditSnapshot = null, editPushed = false;
+  let activeResize = null; // { d, startHw, startHh, startClientX, startClientY, preSnapshot }
+  let aspectLocked = true; // when true, resizing preserves each diamond's current width:height ratio
+  let expandedCorners = new Set(); // keys "diamondId:corner" currently expanded on the canvas
+  let panelWidth = 340; // current side-panel width in px, user-resizable
+  const PANEL_MIN = 260, PANEL_MAX = 640;
+  let panelResizing = null; // { startClientX, startWidth }
+
+  // ---------- DOM refs ----------
+  const svg = document.getElementById('canvas');
+  const viewport = document.getElementById('viewport');
+  const edgesLayer = document.getElementById('edgesLayer');
+  const nodesLayer = document.getElementById('nodesLayer');
+  const cornersLayer = document.getElementById('cornersLayer');
+  const bgRect = document.getElementById('bgRect');
+  const panelEl = document.getElementById('panel');
+  const panelContent = document.getElementById('panelContent');
+  const panelResizeHandle = document.getElementById('panelResizeHandle');
+  const zoomLabel = document.getElementById('zoomLabel');
+  const legendPanel = document.getElementById('legendPanel');
+
+  // ---------- seed example data ----------
+  function makeDiamond(x,y,overrides){
+    return Object.assign({
+      id: genId(), x:x, y:y, hw:DEFAULT_HW, hh:DEFAULT_HH,
+      name:'New Event', adversary:[], capability:[], infrastructure:[], victim:[],
+      phase:'Unspecified', direction:'Unknown', result:'Unknown', confidence:'Low',
+      timestamp:'', notes:''
+    }, overrides || {});
+  }
+
+  // Accepts a legacy single-string value (from older saves) or an array, and
+  // always returns an array so every corner can hold multiple entries.
+  function asList(v){
+    if(Array.isArray(v)) return v;
+    if(typeof v === 'string') return v ? [v] : [];
+    return [];
+  }
+
+  function seedExample(){
+    const e1 = makeDiamond(0, -190, {
+      name:'Initial Compromise', adversary:['APT-COBALT-9'], capability:['Spearphishing w/ macro dropper'],
+      infrastructure:['185.220.101.7 (VPS)'], victim:['Org A — Finance Dept'],
+      phase:'Delivery', direction:'Adversary → Victim', result:'Success', confidence:'Medium',
+      timestamp:'2026-06-02 09:14 UTC', notes:'Malicious invoice attachment opened by AP clerk.'
+    });
+    const e2 = makeDiamond(0, 190, {
+      name:'C2 Established', adversary:['APT-COBALT-9'], capability:['Custom loader','Cobalt Strike beacon'],
+      infrastructure:['update-cdn-sync[.]net','45.61.53.22 (fallback C2)'], victim:['Org A — Finance Dept workstation'],
+      phase:'Command & Control', direction:'Bidirectional', result:'Success', confidence:'High',
+      timestamp:'2026-06-02 09:26 UTC', notes:'Beacon check-in interval ~60s, jitter 20%.'
+    });
+    state.diamonds.push(e1, e2);
+    state.edges.push({
+      id: genId(),
+      from: { id: e1.id, corner: 'infrastructure' },
+      to: { id: e2.id, corner: 'infrastructure' },
+      label:'shared infrastructure',
+      style:'angled',
+      arrow:'arrow'
+    });
+  }
+  seedExample();
+
+  // ---------- history ----------
+  function snapshot(){ return JSON.stringify({ diamonds: state.diamonds, edges: state.edges }); }
+  function pushHistory(){
+    undoStack.push(snapshot());
+    if(undoStack.length > 60) undoStack.shift();
+    redoStack = [];
+  }
+  function undo(){
+    if(undoStack.length === 0) return;
+    redoStack.push(snapshot());
+    const prev = JSON.parse(undoStack.pop());
+    state.diamonds = prev.diamonds; state.edges = prev.edges;
+    clearSelection(); closePanel(); render();
+  }
+  function redo(){
+    if(redoStack.length === 0) return;
+    undoStack.push(snapshot());
+    const next = JSON.parse(redoStack.pop());
+    state.diamonds = next.diamonds; state.edges = next.edges;
+    clearSelection(); closePanel(); render();
+  }
+
+  // ---------- geometry ----------
+  const CORNERS = ['adversary','infrastructure','victim','capability'];
+  function dims(d){ return { hw: d.hw || DEFAULT_HW, hh: d.hh || DEFAULT_HH }; }
+  function cornerBase(d, corner){
+    const { hw, hh } = dims(d);
+    switch(corner){
+      case 'adversary': return { x:d.x, y:d.y-hh, nx:0, ny:-1 };
+      case 'infrastructure': return { x:d.x+hw, y:d.y, nx:1, ny:0 };
+      case 'victim': return { x:d.x, y:d.y+hh, nx:0, ny:1 };
+      case 'capability': return { x:d.x-hw, y:d.y, nx:-1, ny:0 };
+      default: return { x:d.x, y:d.y, nx:0, ny:0 };
+    }
+  }
+  function cornerPoint(d, corner, offset){
+    const b = cornerBase(d, corner);
+    offset = offset || 0;
+    return { x: b.x + b.nx*offset, y: b.y + b.ny*offset };
+  }
+  function diamondPoints(hw, hh){
+    return `0,${-hh} ${hw},0 0,${hh} ${-hw},0`;
+  }
+
+  // ---------- svg helpers ----------
+  function svgEl(tag, attrs, parent){
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for(const k in attrs) el.setAttribute(k, attrs[k]);
+    if(parent) parent.appendChild(el);
+    return el;
+  }
+
+  function applyTransform(){
+    viewport.setAttribute('transform', `translate(${panX},${panY}) scale(${scale})`);
+    zoomLabel.textContent = Math.round(scale*100) + '%';
+  }
+
+  // ---------- rendering ----------
+  function render(){
+    renderEdges();
+    renderNodes();
+    renderCorners();
+  }
+
+  // Given start/end points, return the vertex list for the edge's line style.
+  function edgeRoutePoints(start, end, style){
+    if(style !== 'angled') return [start, end];
+    const dx = end.x - start.x, dy = end.y - start.y;
+    const diag = Math.min(Math.abs(dx), Math.abs(dy));
+    const bend = {
+      x: start.x + Math.sign(dx) * diag,
+      y: start.y + Math.sign(dy) * diag
+    };
+    return [start, bend, end];
+  }
+  function pointsAttr(pts){ return pts.map(p => `${p.x},${p.y}`).join(' '); }
+  function pathMidpoint(pts){
+    let total = 0;
+    const segLens = [];
+    for(let i=0;i<pts.length-1;i++){
+      const l = Math.hypot(pts[i+1].x-pts[i].x, pts[i+1].y-pts[i].y);
+      segLens.push(l); total += l;
+    }
+    let half = total/2;
+    for(let i=0;i<segLens.length;i++){
+      if(half <= segLens[i] || i === segLens.length-1){
+        const t = segLens[i] ? half/segLens[i] : 0;
+        return {
+          x: pts[i].x + (pts[i+1].x-pts[i].x)*t,
+          y: pts[i].y + (pts[i+1].y-pts[i].y)*t
+        };
+      }
+      half -= segLens[i];
+    }
+    return pts[0];
+  }
+
+  function renderEdges(){
+    edgesLayer.innerHTML = '';
+    state.edges.forEach(edge => {
+      const from = state.diamonds.find(d => d.id === edge.from.id);
+      const to = state.diamonds.find(d => d.id === edge.to.id);
+      if(!from || !to) return;
+      const start = cornerPoint(from, edge.from.corner, 4);
+      const end = cornerPoint(to, edge.to.corner, 4);
+      const pts = edgeRoutePoints(start, end, edge.style);
+      const ptsStr = pointsAttr(pts);
+
+      const g = svgEl('g', { class:'edge-group', 'data-id': edge.id }, edgesLayer);
+      svgEl('polyline', {
+        class: 'edge-hit', points: ptsStr
+      }, g);
+      svgEl('polyline', {
+        class: 'edge-line' +
+          (selectedType==='edge' && selectedId===edge.id ? ' selected':'') +
+          (edge.arrow === 'none' ? ' no-arrow':''),
+        points: ptsStr
+      }, g);
+
+      if(edge.label){
+        const mid = pathMidpoint(pts);
+        const w = Math.max(24, edge.label.length*6.2+10);
+        svgEl('rect', { class:'edge-label-bg', x:mid.x-w/2, y:mid.y-9, width:w, height:18, rx:4 }, g);
+        svgEl('text', { class:'edge-label-text', x:mid.x, y:mid.y+1 }, g).textContent = edge.label;
+      }
+
+      g.addEventListener('pointerdown', (ev) => {
+        if(mode !== 'select') return;
+        ev.stopPropagation();
+      });
+      g.addEventListener('click', (ev) => {
+        if(mode !== 'select') return;
+        ev.stopPropagation();
+        selectEdge(edge.id);
+      });
+    });
+  }
+
+  function pruneExpandedCorners(diamondId){
+    const prefix = diamondId + ':';
+    Array.from(expandedCorners).forEach(k => { if(k.startsWith(prefix)) expandedCorners.delete(k); });
+  }
+
+  function cornerLabel(g, opts){
+    const { x, y, anchor, cls, label, values, diamondId, corner } = opts;
+    const t = svgEl('text', { x:x, y:y, 'text-anchor':anchor, class:'corner-label ' + cls }, g);
+    t.textContent = label;
+
+    const items = asList(values);
+    if(items.length === 0){
+      svgEl('text', { x:x, y:y+13, 'text-anchor':anchor, class:'corner-value ' + cls }, g).textContent = '—';
+      return;
+    }
+
+    const maxShown = 3;
+    const key = diamondId + ':' + corner;
+    const isExpanded = expandedCorners.has(key);
+    const showCount = isExpanded ? items.length : Math.min(items.length, maxShown);
+
+    items.slice(0, showCount).forEach((v, i) => {
+      svgEl('text', { x:x, y:y+13+i*13, 'text-anchor':anchor, class:'corner-value ' + cls }, g).textContent = truncate(v, 30);
+    });
+
+    if(items.length > maxShown){
+      const toggle = svgEl('text', {
+        x:x, y:y+13+showCount*13, 'text-anchor':anchor, class:'corner-value corner-toggle ' + cls
+      }, g);
+      toggle.textContent = isExpanded ? '▲ show less' : `▾ +${items.length - maxShown} more`;
+      // Stop these from bubbling into the diamond's own drag/select handling.
+      toggle.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+      toggle.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if(isExpanded) expandedCorners.delete(key); else expandedCorners.add(key);
+        render();
+      });
+    }
+  }
+
+  function renderNodes(){
+    nodesLayer.innerHTML = '';
+    state.diamonds.forEach((d, idx) => {
+      const { hw, hh } = dims(d);
+      const isSelected = selectedType==='diamond' && selectedId===d.id;
+      const g = svgEl('g', {
+        class: 'node' + (isSelected ? ' selected':''),
+        transform: `translate(${d.x},${d.y})`,
+        'data-id': d.id
+      }, nodesLayer);
+
+      svgEl('polygon', { class:'shape', points: diamondPoints(hw, hh) }, g);
+
+      // corner labels: top=Adversary, right=Infrastructure, bottom=Victim, left=Capability
+      cornerLabel(g, { x:0, y:-hh-20, anchor:'middle', cls:'corner-adversary', label:'ADVERSARY', values:d.adversary, diamondId:d.id, corner:'adversary' });
+      cornerLabel(g, { x:hw+10, y:-6, anchor:'start', cls:'corner-infrastructure', label:'INFRASTRUCTURE', values:d.infrastructure, diamondId:d.id, corner:'infrastructure' });
+      cornerLabel(g, { x:0, y:hh+22, anchor:'middle', cls:'corner-victim', label:'VICTIM', values:d.victim, diamondId:d.id, corner:'victim' });
+      cornerLabel(g, { x:-hw-10, y:-6, anchor:'end', cls:'corner-capability', label:'CAPABILITY', values:d.capability, diamondId:d.id, corner:'capability' });
+
+      // badge
+      svgEl('circle', { class:'badge-circle', cx:-hw-4, cy:-hh-4, r:11 }, g);
+      svgEl('text', { class:'badge-text', x:-hw-4, y:-hh-3 }, g).textContent = idx+1;
+
+      // center — name truncates to one line; phase & timestamp wrap onto multiple lines
+      const maxChars = Math.max(8, Math.floor((hw*2 - 24) / 7));
+      const nameEl = svgEl('text', { class:'center-name', x:0, y:-3 }, g);
+      nameEl.textContent = truncate(d.name || 'Untitled event', maxChars);
+
+      const availWidth = hw*2 - 24;
+      const subEl = svgEl('text', { class:'center-sub', x:0, y:15 }, g);
+      const phaseLines = wrapText(d.phase || '', availWidth, 2);
+      const tsLines = wrapText(d.timestamp || '', availWidth, 1);
+      const subLines = [...phaseLines, ...tsLines];
+      subLines.forEach((line, i) => {
+        svgEl('tspan', { x:0, dy: i===0 ? 0 : 11 }, subEl).textContent = line;
+      });
+
+      attachNodeHandlers(g, d);
+
+      // resize handle — only shown for the selected diamond in select mode
+      if(isSelected && mode === 'select'){
+        const dist = Math.SQRT1_2 * 14;
+        const handle = svgEl('g', { class:'resize-handle', transform:`translate(${hw+dist},${hh+dist})` }, g);
+        svgEl('circle', { r:7 }, handle);
+        svgEl('path', { d:'M -3,3 L 3,-3 M 0,3 L 3,3 L 3,0 M -3,0 L -3,-3 L 0,-3', class:'resize-glyph' }, handle);
+        handle.addEventListener('pointerdown', (ev) => {
+          ev.stopPropagation();
+          activeResize = {
+            d, startHw: hw, startHh: hh,
+            startClientX: ev.clientX, startClientY: ev.clientY,
+            preSnapshot: snapshot()
+          };
+        });
+      }
+    });
+  }
+
+  function truncate(str, n){ return str.length > n ? str.slice(0,n-1)+'…' : str; }
+
+  // Word-wrap for the monospace corner/sub-text labels. Estimates character
+  // width from the (fixed-pitch) font rather than measuring the DOM, so it
+  // works during the same render pass that creates the text node.
+  function wrapText(text, availWidth, maxLines, fontSize){
+    if(!text) return [];
+    fontSize = fontSize || 9;
+    const charWidth = fontSize * 0.62;
+    const charsPerLine = Math.max(4, Math.floor(availWidth / charWidth));
+    const words = text.split(' ');
+    const lines = [];
+    let current = '';
+    words.forEach(word => {
+      const candidate = current ? current + ' ' + word : word;
+      if(candidate.length <= charsPerLine){
+        current = candidate;
+        return;
+      }
+      if(current) lines.push(current);
+      // hard-break a single word longer than one full line
+      let rest = word;
+      while(rest.length > charsPerLine){
+        lines.push(rest.slice(0, charsPerLine));
+        rest = rest.slice(charsPerLine);
+      }
+      current = rest;
+    });
+    if(current) lines.push(current);
+    if(lines.length > maxLines){
+      let last = lines[maxLines-1];
+      if(last.length > charsPerLine-1) last = last.slice(0, charsPerLine-1);
+      lines.length = maxLines;
+      lines[maxLines-1] = last + '…';
+    }
+    return lines;
+  }
+
+  // ---------- connect-mode corner dots ----------
+  function renderCorners(){
+    cornersLayer.innerHTML = '';
+    if(mode !== 'connect') return;
+    state.diamonds.forEach(d => {
+      CORNERS.forEach(corner => {
+        const p = cornerPoint(d, corner, 10);
+        const isPicked = pendingConnect && pendingConnect.id === d.id && pendingConnect.corner === corner;
+        const dot = svgEl('circle', {
+          class: 'corner-dot corner-dot-' + corner + (isPicked ? ' picked' : ''),
+          cx: p.x, cy: p.y, r: isPicked ? 8 : 6
+        }, cornersLayer);
+        dot.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+        dot.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          handleCornerClick(d.id, corner);
+        });
+      });
+    });
+  }
+
+  function handleCornerClick(diamondId, corner){
+    if(!pendingConnect){
+      pendingConnect = { id: diamondId, corner: corner };
+      render();
+      return;
+    }
+    if(pendingConnect.id === diamondId && pendingConnect.corner === corner){
+      pendingConnect = null; // clicked the same point again -> cancel
+      render();
+      return;
+    }
+    pushHistory();
+    state.edges.push({
+      id: genId(),
+      from: { id: pendingConnect.id, corner: pendingConnect.corner },
+      to: { id: diamondId, corner: corner },
+      label: '',
+      style: defaultEdgeStyle,
+      arrow: defaultEdgeArrow
+    });
+    pendingConnect = null;
+    render();
+  }
+
+  // ---------- node interaction (click vs drag) ----------
+  function attachNodeHandlers(g, d){
+    let dragging = false, moved = false;
+    let startClientX=0, startClientY=0, startDX=0, startDY=0;
+    let preDragSnapshot = null;
+
+    g.addEventListener('pointerdown', (ev) => {
+      ev.stopPropagation();
+      if(mode === 'connect') return; // handled on click
+      dragging = true; moved = false;
+      startClientX = ev.clientX; startClientY = ev.clientY;
+      startDX = d.x; startDY = d.y;
+      preDragSnapshot = snapshot();
+      g.setPointerCapture(ev.pointerId);
+    });
+    g.addEventListener('pointermove', (ev) => {
+      if(!dragging) return;
+      const dx = (ev.clientX - startClientX) / scale;
+      const dy = (ev.clientY - startClientY) / scale;
+      if(Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
+      if(moved){
+        d.x = startDX + dx; d.y = startDY + dy;
+        // Update this node's own transform directly rather than calling render(),
+        // which would rebuild the DOM and drop pointer capture mid-drag.
+        g.setAttribute('transform', `translate(${d.x},${d.y})`);
+        renderEdges();
+      }
+    });
+    g.addEventListener('pointerup', (ev) => {
+      if(!dragging) return;
+      dragging = false;
+      if(moved){
+        undoStack.push(preDragSnapshot); redoStack = [];
+        if(undoStack.length > 60) undoStack.shift();
+      }
+    });
+    g.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if(moved){ moved = false; return; } // was a drag, not a click
+      if(mode === 'connect') return; // corner dots handle connect-mode clicks
+      selectDiamond(d.id);
+    });
+  }
+
+  // ---------- resize handle (global listeners so the drag survives re-renders) ----------
+  document.addEventListener('pointermove', (ev) => {
+    if(!activeResize) return;
+    const { d, startHw, startHh } = activeResize;
+    const dx = (ev.clientX - activeResize.startClientX) / scale;
+    const dy = (ev.clientY - activeResize.startClientY) / scale;
+
+    if(aspectLocked){
+      // Project the drag onto the diamond's own width:height ratio so it only
+      // scales, never distorts — projection of (startHw+dx, startHh+dy) onto (startHw, startHh).
+      const denom = startHw*startHw + startHh*startHh;
+      const scale2 = denom ? 1 + (dx*startHw + dy*startHh) / denom : 1;
+      const minScale = Math.max(MIN_HW/startHw, MIN_HH/startHh);
+      const maxScale = Math.min(MAX_HW/startHw, MAX_HH/startHh);
+      const clamped = Math.min(maxScale, Math.max(minScale, scale2));
+      d.hw = startHw * clamped;
+      d.hh = startHh * clamped;
+    } else {
+      d.hw = Math.min(MAX_HW, Math.max(MIN_HW, startHw + dx));
+      d.hh = Math.min(MAX_HH, Math.max(MIN_HH, startHh + dy));
+    }
+    render();
+  });
+  document.addEventListener('pointerup', () => {
+    if(!activeResize) return;
+    undoStack.push(activeResize.preSnapshot); redoStack = [];
+    if(undoStack.length > 60) undoStack.shift();
+    activeResize = null;
+  });
+
+  // ---------- side panel resize ----------
+  panelResizeHandle.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    panelResizing = { startClientX: ev.clientX, startWidth: panelWidth };
+    panelEl.classList.add('resizing');
+  });
+  document.addEventListener('pointermove', (ev) => {
+    if(!panelResizing) return;
+    const delta = panelResizing.startClientX - ev.clientX; // dragging left grows the panel
+    panelWidth = Math.min(PANEL_MAX, Math.max(PANEL_MIN, panelResizing.startWidth + delta));
+    panelEl.style.width = panelWidth + 'px';
+  });
+  document.addEventListener('pointerup', () => {
+    if(!panelResizing) return;
+    panelResizing = null;
+    panelEl.classList.remove('resizing');
+  });
+
+  // ---------- selection & panel ----------
+  function clearSelection(){ selectedType = null; selectedId = null; }
+  function openPanel(){ panelEl.classList.add('open'); panelEl.style.width = panelWidth + 'px'; }
+  function closePanel(){ panelEl.classList.remove('open'); panelEl.style.width = ''; panelContent.innerHTML=''; }
+
+  function selectDiamond(id){
+    selectedType = 'diamond'; selectedId = id;
+    preEditSnapshot = snapshot(); editPushed = false;
+    render();
+    openDiamondPanel(id);
+  }
+  function selectEdge(id){
+    selectedType = 'edge'; selectedId = id;
+    preEditSnapshot = snapshot(); editPushed = false;
+    render();
+    openEdgePanel(id);
+  }
+
+  function commitFieldChange(){
+    if(!editPushed){
+      undoStack.push(preEditSnapshot); redoStack = [];
+      if(undoStack.length > 60) undoStack.shift();
+      editPushed = true;
+    }
+  }
+
+  function field(labelText, inputHtml){
+    return `<div class="field"><label>${labelText}</label>${inputHtml}</div>`;
+  }
+  function selectOptions(list, current){
+    return list.map(o => `<option value="${o}" ${o===current?'selected':''}>${o}</option>`).join('');
+  }
+
+  // ---------- multi-item corner fields ----------
+  function chipListHtml(key, items){
+    if(!items.length) return '<span class="chip-empty">None yet — add one below</span>';
+    return items.map((v,i) => `
+      <span class="chip">
+        <span class="chip-text">${escapeHtml(v)}</span>
+        <button type="button" class="chip-remove" data-key="${key}" data-idx="${i}" title="Remove">✕</button>
+      </span>
+    `).join('');
+  }
+  function chipField(labelHtml, key, items){
+    return `
+      <div class="field">
+        <label>${labelHtml}</label>
+        <div class="chip-list" id="list_${key}">${chipListHtml(key, items)}</div>
+        <div class="chip-add-row">
+          <input type="text" id="input_${key}" placeholder="Add another…">
+          <button type="button" class="chip-add-btn" data-key="${key}">Add</button>
+        </div>
+      </div>
+    `;
+  }
+  function refreshChipList(d, key){
+    const listEl = document.getElementById('list_'+key);
+    if(!listEl) return;
+    listEl.innerHTML = chipListHtml(key, asList(d[key]));
+    const input = document.getElementById('input_'+key);
+    if(input) input.focus();
+  }
+  function addChipValue(d, key, rawValue){
+    const value = (rawValue || '').trim();
+    if(!value) return;
+    commitFieldChange();
+    d[key] = asList(d[key]);
+    d[key].push(value);
+    render();
+  }
+  function removeChipValue(d, key, idx){
+    commitFieldChange();
+    d[key] = asList(d[key]);
+    d[key].splice(idx, 1);
+    render();
+  }
+  // Delegated once (not re-attached per panel render) so repeated add/remove
+  // clicks never accumulate duplicate listeners on the panel container.
+  panelContent.addEventListener('click', (ev) => {
+    if(selectedType !== 'diamond') return;
+    const d = state.diamonds.find(x => x.id === selectedId);
+    if(!d) return;
+    const addBtn = ev.target.closest('.chip-add-btn');
+    if(addBtn){
+      const key = addBtn.dataset.key;
+      const input = document.getElementById('input_'+key);
+      addChipValue(d, key, input.value);
+      input.value = '';
+      refreshChipList(d, key);
+      return;
+    }
+    const rmBtn = ev.target.closest('.chip-remove');
+    if(rmBtn){
+      removeChipValue(d, rmBtn.dataset.key, parseInt(rmBtn.dataset.idx, 10));
+      refreshChipList(d, rmBtn.dataset.key);
+    }
+  });
+  panelContent.addEventListener('keydown', (ev) => {
+    if(ev.key !== 'Enter') return;
+    if(!ev.target.matches('input[id^="input_"]')) return;
+    if(selectedType !== 'diamond') return;
+    const d = state.diamonds.find(x => x.id === selectedId);
+    if(!d) return;
+    ev.preventDefault();
+    const key = ev.target.id.replace('input_', '');
+    addChipValue(d, key, ev.target.value);
+    ev.target.value = '';
+    refreshChipList(d, key);
+  });
+
+  function openDiamondPanel(id){
+    const d = state.diamonds.find(x => x.id === id);
+    if(!d) return;
+    openPanel();
+    panelContent.innerHTML = `
+      <div class="panel-title">Event details <button id="pClose" title="Close">✕</button></div>
+      ${field('Event name', `<input id="f_name" type="text" value="${escapeAttr(d.name)}">`)}
+      ${chipField('<span class="swatch" style="background:var(--accent-adversary)"></span>Adversary', 'adversary', asList(d.adversary))}
+      ${chipField('<span class="swatch" style="background:var(--accent-capability)"></span>Capability', 'capability', asList(d.capability))}
+      ${chipField('<span class="swatch" style="background:var(--accent-infrastructure)"></span>Infrastructure', 'infrastructure', asList(d.infrastructure))}
+      ${chipField('<span class="swatch" style="background:var(--accent-victim)"></span>Victim', 'victim', asList(d.victim))}
+      ${field('Phase (kill chain)', `<select id="f_phase">${selectOptions(PHASES, d.phase)}</select>`)}
+      <div class="field-row">
+        ${field('Direction', `<select id="f_direction">${selectOptions(DIRECTIONS, d.direction)}</select>`)}
+        ${field('Result', `<select id="f_result">${selectOptions(RESULTS, d.result)}</select>`)}
+      </div>
+      <div class="field-row">
+        ${field('Confidence', `<select id="f_confidence">${selectOptions(CONFIDENCE, d.confidence)}</select>`)}
+        ${field('Timestamp', `<input id="f_timestamp" type="text" placeholder="YYYY-MM-DD HH:MM" value="${escapeAttr(d.timestamp)}">`)}
+      </div>
+      ${field('Notes', `<textarea id="f_notes">${escapeHtml(d.notes)}</textarea>`)}
+      <div class="field-row">
+        ${field('Width', `<input id="f_width" type="number" min="${MIN_HW*2}" max="${MAX_HW*2}" step="10" value="${Math.round((d.hw||DEFAULT_HW)*2)}">`)}
+        ${field('Height', `<input id="f_height" type="number" min="${MIN_HH*2}" max="${MAX_HH*2}" step="10" value="${Math.round((d.hh||DEFAULT_HH)*2)}">`)}
+      </div>
+      <p style="font-size:11px;color:var(--text-dim);margin:-6px 0 0;">Drag the handle on the diamond's lower-right corner to resize freely, or set exact dimensions here.</p>
+      <div class="panel-actions">
+        <button id="pResetSize">Reset size</button>
+        <button id="pDelete" class="danger">Delete event</button>
+      </div>
+    `;
+    ['name','phase','direction','result','confidence','timestamp','notes'].forEach(key => {
+      const el = document.getElementById('f_'+key);
+      const evt = (el.tagName === 'SELECT') ? 'change' : 'input';
+      el.addEventListener(evt, () => {
+        commitFieldChange();
+        d[key] = el.value;
+        render();
+      });
+    });
+    document.getElementById('f_width').addEventListener('change', (ev) => {
+      commitFieldChange();
+      const ratio = (d.hh||DEFAULT_HH) ? (d.hw||DEFAULT_HW)/(d.hh||DEFAULT_HH) : DEFAULT_HW/DEFAULT_HH;
+      const hw = Math.min(MAX_HW, Math.max(MIN_HW, (parseFloat(ev.target.value)||DEFAULT_HW*2)/2));
+      d.hw = hw;
+      if(aspectLocked){
+        d.hh = Math.min(MAX_HH, Math.max(MIN_HH, hw/ratio));
+        document.getElementById('f_height').value = Math.round(d.hh*2);
+      }
+      ev.target.value = Math.round(hw*2);
+      render();
+    });
+    document.getElementById('f_height').addEventListener('change', (ev) => {
+      commitFieldChange();
+      const ratio = (d.hh||DEFAULT_HH) ? (d.hw||DEFAULT_HW)/(d.hh||DEFAULT_HH) : DEFAULT_HW/DEFAULT_HH;
+      const hh = Math.min(MAX_HH, Math.max(MIN_HH, (parseFloat(ev.target.value)||DEFAULT_HH*2)/2));
+      d.hh = hh;
+      if(aspectLocked){
+        d.hw = Math.min(MAX_HW, Math.max(MIN_HW, hh*ratio));
+        document.getElementById('f_width').value = Math.round(d.hw*2);
+      }
+      ev.target.value = Math.round(hh*2);
+      render();
+    });
+    document.getElementById('pResetSize').addEventListener('click', () => {
+      commitFieldChange();
+      d.hw = DEFAULT_HW; d.hh = DEFAULT_HH;
+      document.getElementById('f_width').value = DEFAULT_HW*2;
+      document.getElementById('f_height').value = DEFAULT_HH*2;
+      render();
+    });
+    document.getElementById('pClose').addEventListener('click', () => { clearSelection(); closePanel(); render(); });
+    document.getElementById('pDelete').addEventListener('click', () => {
+      pushHistory();
+      state.diamonds = state.diamonds.filter(x => x.id !== id);
+      state.edges = state.edges.filter(e => e.from.id !== id && e.to.id !== id);
+      pruneExpandedCorners(id);
+      clearSelection(); closePanel(); render();
+    });
+  }
+
+  function openEdgePanel(id){
+    const e = state.edges.find(x => x.id === id);
+    if(!e) return;
+    const from = state.diamonds.find(d => d.id === e.from.id);
+    const to = state.diamonds.find(d => d.id === e.to.id);
+    openPanel();
+    panelContent.innerHTML = `
+      <div class="panel-title">Link details <button id="pClose" title="Close">✕</button></div>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:0;line-height:1.5;">
+        <strong>${escapeHtml(from ? from.name : '?')}</strong>
+        <span style="color:var(--accent-${e.from.corner})">${capitalize(e.from.corner)}</span>
+        → <strong>${escapeHtml(to ? to.name : '?')}</strong>
+        <span style="color:var(--accent-${e.to.corner})">${capitalize(e.to.corner)}</span>
+      </p>
+      ${field('Link label', `<input id="f_label" type="text" placeholder="e.g. pivot, shared infra, same actor" value="${escapeAttr(e.label)}">`)}
+      ${field('Line style', `<select id="f_style">
+        <option value="straight" ${(e.style||'straight')==='straight'?'selected':''}>Straight line</option>
+        <option value="angled" ${e.style==='angled'?'selected':''}>Angled (45°)</option>
+      </select>`)}
+      ${field('Arrowhead', `<select id="f_arrow">
+        <option value="arrow" ${(e.arrow||'arrow')==='arrow'?'selected':''}>Arrow →</option>
+        <option value="none" ${e.arrow==='none'?'selected':''}>Plain line —</option>
+      </select>`)}
+      <div class="panel-actions">
+        <button id="pDeleteEdge" class="danger">Delete link</button>
+      </div>
+    `;
+    document.getElementById('f_label').addEventListener('input', (ev) => {
+      commitFieldChange();
+      e.label = ev.target.value;
+      render();
+    });
+    document.getElementById('f_style').addEventListener('change', (ev) => {
+      commitFieldChange();
+      e.style = ev.target.value;
+      render();
+    });
+    document.getElementById('f_arrow').addEventListener('change', (ev) => {
+      commitFieldChange();
+      e.arrow = ev.target.value;
+      render();
+    });
+    document.getElementById('pClose').addEventListener('click', () => { clearSelection(); closePanel(); render(); });
+    document.getElementById('pDeleteEdge').addEventListener('click', () => {
+      pushHistory();
+      state.edges = state.edges.filter(x => x.id !== id);
+      clearSelection(); closePanel(); render();
+    });
+  }
+
+  function capitalize(s){ return s ? s.charAt(0).toUpperCase()+s.slice(1) : ''; }
+  function escapeHtml(s){ return (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+  function escapeAttr(s){ return escapeHtml(s).replace(/"/g,'&quot;'); }
+
+  // ---------- pan & zoom ----------
+  let panning = false, panMoved = false, panStartClientX=0, panStartClientY=0, panStartX=0, panStartY=0;
+
+  bgRect.addEventListener('pointerdown', (ev) => {
+    if(mode === 'connect') return;
+    panning = true; panMoved = false;
+    panStartClientX = ev.clientX; panStartClientY = ev.clientY;
+    panStartX = panX; panStartY = panY;
+    svg.classList.add('panning');
+    bgRect.setPointerCapture(ev.pointerId);
+  });
+  bgRect.addEventListener('pointermove', (ev) => {
+    if(!panning) return;
+    const dx = ev.clientX - panStartClientX, dy = ev.clientY - panStartClientY;
+    if(Math.abs(dx) > 2 || Math.abs(dy) > 2) panMoved = true;
+    if(panMoved){
+      panX = panStartX + dx; panY = panStartY + dy;
+      applyTransform();
+    }
+  });
+  bgRect.addEventListener('pointerup', () => {
+    panning = false;
+    svg.classList.remove('panning');
+  });
+  bgRect.addEventListener('click', () => {
+    if(panMoved){ panMoved = false; return; }
+    if(mode === 'connect' && pendingConnect){ pendingConnect = null; render(); return; }
+    clearSelection(); closePanel(); render();
+  });
+
+  function zoomAt(factor, clientX, clientY){
+    const rect = svg.getBoundingClientRect();
+    const cx = clientX - rect.left, cy = clientY - rect.top;
+    const newScale = Math.min(3, Math.max(0.2, scale * factor));
+    panX = cx - (cx - panX) * (newScale/scale);
+    panY = cy - (cy - panY) * (newScale/scale);
+    scale = newScale;
+    applyTransform();
+  }
+
+  document.getElementById('canvasWrap').addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    const factor = ev.deltaY < 0 ? 1.1 : 0.9;
+    zoomAt(factor, ev.clientX, ev.clientY);
+  }, { passive:false });
+
+  document.getElementById('btnZoomIn').addEventListener('click', () => {
+    const rect = svg.getBoundingClientRect();
+    zoomAt(1.2, rect.left+rect.width/2, rect.top+rect.height/2);
+  });
+  document.getElementById('btnZoomOut').addEventListener('click', () => {
+    const rect = svg.getBoundingClientRect();
+    zoomAt(0.8, rect.left+rect.width/2, rect.top+rect.height/2);
+  });
+  document.getElementById('btnZoomReset').addEventListener('click', () => {
+    scale = 1; panX = 0; panY = 0; applyTransform();
+  });
+
+  // ---------- toolbar actions ----------
+  document.getElementById('btnNew').addEventListener('click', () => {
+    pushHistory();
+    const rect = svg.getBoundingClientRect();
+    const cx = (rect.width/2 - panX) / scale;
+    const cy = (rect.height/2 - panY) / scale;
+    const jitter = () => (Math.random()-0.5)*60;
+    const d = makeDiamond(cx+jitter(), cy+jitter());
+    state.diamonds.push(d);
+    render();
+    selectDiamond(d.id);
+  });
+
+  document.getElementById('btnAspectLock').addEventListener('click', () => {
+    aspectLocked = !aspectLocked;
+    const btn = document.getElementById('btnAspectLock');
+    btn.classList.toggle('active', aspectLocked);
+    btn.innerHTML = aspectLocked ? '🔒 Lock Ratio' : '🔓 Free Resize';
+  });
+
+  document.getElementById('btnConnect').addEventListener('click', () => {
+    mode = (mode === 'connect') ? 'select' : 'connect';
+    pendingConnect = null;
+    document.getElementById('btnConnect').classList.toggle('active', mode==='connect');
+    svg.classList.toggle('connect-mode', mode==='connect');
+    render();
+  });
+
+  document.getElementById('edgeStyleSelect').addEventListener('change', (ev) => {
+    defaultEdgeStyle = ev.target.value;
+  });
+
+  document.getElementById('edgeArrowSelect').addEventListener('change', (ev) => {
+    defaultEdgeArrow = ev.target.value;
+  });
+
+  document.getElementById('btnUndo').addEventListener('click', undo);
+  document.getElementById('btnRedo').addEventListener('click', redo);
+
+  function exportJSON(){
+    const data = JSON.stringify({ diamonds: state.diamonds, edges: state.edges }, null, 2);
+    const blob = new Blob([data], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'diamond-model-case.json'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById('exportSelect').addEventListener('change', (ev) => {
+    const format = ev.target.value;
+    if(format === 'png') exportPNG();
+    else if(format === 'json') exportJSON();
+    ev.target.value = ''; // reset back to showing "Export"
+  });
+
+  function exportPNG(){
+    if(state.diamonds.length === 0){ alert('Add at least one event before exporting.'); return; }
+
+    // Measure true content extents directly from the live (attached) SVG layers —
+    // this is independent of the current pan/zoom and accounts for label text width.
+    const nodesBox = nodesLayer.getBBox();
+    const edgesBox = state.edges.length ? edgesLayer.getBBox() : nodesBox;
+    const pad = 50;
+    const minX = Math.min(nodesBox.x, edgesBox.x) - pad;
+    const minY = Math.min(nodesBox.y, edgesBox.y) - pad;
+    const maxX = Math.max(nodesBox.x+nodesBox.width, edgesBox.x+edgesBox.width) + pad;
+    const maxY = Math.max(nodesBox.y+nodesBox.height, edgesBox.y+edgesBox.height) + pad;
+    const width = Math.max(200, maxX - minX);
+    const height = Math.max(200, maxY - minY);
+
+    // Clone edges/nodes, stripped of selection & drag-handle chrome that
+    // shouldn't appear in an exported image.
+    const edgesClone = edgesLayer.cloneNode(true);
+    const nodesClone = nodesLayer.cloneNode(true);
+    nodesClone.querySelectorAll('.resize-handle').forEach(el => el.remove());
+    nodesClone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+    edgesClone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+
+    // The clone has no page <body> ancestor, so CSS custom properties (theme
+    // colors) won't resolve on their own — bake the *current* theme's resolved
+    // values into a :root block so the exported SVG looks identical.
+    const cs = getComputedStyle(document.body);
+    const varNames = ['--bg','--node-fill','--node-stroke','--text','--text-dim',
+      '--accent-adversary','--accent-capability','--accent-infrastructure','--accent-victim',
+      '--accent-edge','--panel-bg','--border','--border-strong'];
+    let rootVars = ':root{';
+    varNames.forEach(v => { rootVars += `${v}:${cs.getPropertyValue(v).trim()};`; });
+    rootVars += '}';
+    const bgColor = cs.getPropertyValue('--bg').trim();
+
+    const fontImport = "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');";
+    const styleText = fontImport + document.querySelector('style').textContent + rootVars;
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const exportSvg = document.createElementNS(ns, 'svg');
+    exportSvg.setAttribute('xmlns', ns);
+    exportSvg.setAttribute('viewBox', `${minX} ${minY} ${width} ${height}`);
+    exportSvg.setAttribute('width', width);
+    exportSvg.setAttribute('height', height);
+
+    const styleEl = document.createElementNS(ns, 'style');
+    styleEl.textContent = styleText;
+    exportSvg.appendChild(styleEl);
+
+    const bg = document.createElementNS(ns, 'rect');
+    bg.setAttribute('x', minX); bg.setAttribute('y', minY);
+    bg.setAttribute('width', width); bg.setAttribute('height', height);
+    bg.setAttribute('fill', bgColor);
+    exportSvg.appendChild(bg);
+
+    const defsSource = document.querySelector('#canvas defs');
+    if(defsSource) exportSvg.appendChild(defsSource.cloneNode(true));
+    exportSvg.appendChild(edgesClone);
+    exportSvg.appendChild(nodesClone);
+
+    const svgStr = new XMLSerializer().serializeToString(exportSvg);
+    const svgBlob = new Blob([svgStr], { type:'image/svg+xml;charset=utf-8' });
+    const svgUrl = URL.createObjectURL(svgBlob);
+
+    const img = new Image();
+    img.onload = () => {
+      const scaleFactor = 2; // export at 2x for a crisper PNG
+      const canvasEl = document.createElement('canvas');
+      canvasEl.width = Math.round(width * scaleFactor);
+      canvasEl.height = Math.round(height * scaleFactor);
+      const ctx = canvasEl.getContext('2d');
+      ctx.scale(scaleFactor, scaleFactor);
+      ctx.drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(svgUrl);
+      canvasEl.toBlob((pngBlob) => {
+        if(!pngBlob){ alert('Could not generate PNG export.'); return; }
+        const dlUrl = URL.createObjectURL(pngBlob);
+        const a = document.createElement('a');
+        a.href = dlUrl; a.download = 'diamond-model-case.png'; a.click();
+        URL.revokeObjectURL(dlUrl);
+      }, 'image/png');
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(svgUrl);
+      alert('Could not generate PNG export.');
+    };
+    img.src = svgUrl;
+  }
+
+  document.getElementById('btnImport').addEventListener('click', () => {
+    document.getElementById('fileImport').click();
+  });
+  document.getElementById('fileImport').addEventListener('change', (ev) => {
+    const file = ev.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const parsed = JSON.parse(reader.result);
+        if(!parsed.diamonds || !parsed.edges) throw new Error('Invalid file');
+        pushHistory();
+        state.diamonds = parsed.diamonds; state.edges = parsed.edges;
+        let maxNum = 0;
+        [...state.diamonds, ...state.edges].forEach(o => {
+          const n = parseInt(String(o.id).replace('d',''), 10);
+          if(!isNaN(n)) maxNum = Math.max(maxNum, n);
+        });
+        idCounter = maxNum + 1;
+        clearSelection(); closePanel(); render();
+      }catch(err){
+        alert('Could not load file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    ev.target.value = '';
+  });
+
+  document.getElementById('btnClear').addEventListener('click', () => {
+    if(state.diamonds.length===0 && state.edges.length===0) return;
+    if(!confirm('Clear all events and links? This can still be undone with Ctrl+Z.')) return;
+    pushHistory();
+    state.diamonds = []; state.edges = [];
+    expandedCorners.clear();
+    clearSelection(); closePanel(); render();
+  });
+
+  document.getElementById('btnLegend').addEventListener('click', () => {
+    legendPanel.classList.toggle('hidden');
+  });
+  document.getElementById('btnCloseLegend').addEventListener('click', () => {
+    legendPanel.classList.add('hidden');
+  });
+
+  document.getElementById('btnTheme').addEventListener('click', () => {
+    const dark = document.body.classList.contains('theme-dark');
+    document.body.classList.toggle('theme-dark', !dark);
+    document.body.classList.toggle('theme-light', dark);
+    document.getElementById('btnTheme').innerHTML = dark ? '☀ Light' : '☾ Dark';
+  });
+
+  // ---------- keyboard ----------
+  document.addEventListener('keydown', (ev) => {
+    const activeTag = document.activeElement ? document.activeElement.tagName : '';
+    const typing = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
+    if((ev.ctrlKey || ev.metaKey) && !typing){
+      if(ev.key.toLowerCase() === 'z' && !ev.shiftKey){ ev.preventDefault(); undo(); return; }
+      if((ev.key.toLowerCase() === 'z' && ev.shiftKey) || ev.key.toLowerCase() === 'y'){ ev.preventDefault(); redo(); return; }
+    }
+    if(ev.key === 'Escape'){
+      if(mode === 'connect'){ mode='select'; pendingConnect=null; document.getElementById('btnConnect').classList.remove('active'); svg.classList.remove('connect-mode'); }
+      clearSelection(); closePanel(); render();
+    }
+    if((ev.key === 'Delete' || ev.key === 'Backspace') && !typing && selectedId){
+      ev.preventDefault();
+      pushHistory();
+      if(selectedType === 'diamond'){
+        state.diamonds = state.diamonds.filter(x => x.id !== selectedId);
+        state.edges = state.edges.filter(e => e.from.id !== selectedId && e.to.id !== selectedId);
+        pruneExpandedCorners(selectedId);
+      } else if(selectedType === 'edge'){
+        state.edges = state.edges.filter(x => x.id !== selectedId);
+      }
+      clearSelection(); closePanel(); render();
+    }
+  });
+
+  // ---------- init ----------
+  function fitViewToContent(){
+    if(state.diamonds.length === 0){ applyTransform(); return; }
+    const pad = 60;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    state.diamonds.forEach(d => {
+      const { hw, hh } = dims(d);
+      minX = Math.min(minX, d.x - hw - pad); maxX = Math.max(maxX, d.x + hw + pad);
+      minY = Math.min(minY, d.y - hh - pad); maxY = Math.max(maxY, d.y + hh + pad);
+    });
+    const contentW = Math.max(1, maxX - minX), contentH = Math.max(1, maxY - minY);
+    const rect = svg.getBoundingClientRect();
+    const viewW = rect.width || 900, viewH = rect.height || 600;
+    scale = Math.min(3, Math.max(0.2, Math.min(viewW/contentW, viewH/contentH, 1.2)));
+    panX = viewW/2 - (minX+maxX)/2 * scale;
+    panY = viewH/2 - (minY+maxY)/2 * scale;
+    applyTransform();
+  }
+  fitViewToContent();
+  render();
+})();
+</script>
+</body>
+</html>
